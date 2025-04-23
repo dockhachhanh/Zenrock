@@ -182,6 +182,133 @@ sudo journalctl -u zenrock-testnet.service -f --no-hostname -o cat
 ```
 Kiểm tra trạng thái đồng bộ:
 ```bash
-zenrockd status --node tcp://localhost:18257 | jq .SyncInfo
+zenrockd status --node tcp://localhost:18257 | jq
 ```
 Nếu "catching_up": false, node đã đồng bộ.
+---
+# Thiết Lập Validator (Tùy Chọn)
+Nếu bạn muốn thiết lập validator, làm theo các bước sau. Xem hướng dẫn chính thức tại: Zenrock Validators.
+## 1. Tạo Ví
+Tạo ví mới:
+```bash
+zenrockd keys add wallet
+```
+Hoặc khôi phục ví:
+```bash
+zenrockd keys add wallet --recover
+```
+Lưu mnemonic để khôi phục ví sau này.
+Liệt kê ví:
+```bash
+zenrockd keys list
+```
+## 2. Nạp Tiền Vào Ví
+Kiểm tra số dư:
+```bash
+zenrockd q bank balances $(zenrockd keys show wallet -a)
+```
+Nạp token urock vào ví từ faucet hoặc nguồn khác.
+## 3. TTI Validator
+Cập nhật thông tin validator theo ý bạn:
+```bash
+zenrockd tx validation create-validator <(cat <<EOF
+{
+  "pubkey": $(zenrockd comet show-validator),
+  "amount": "1000000urock",
+  "moniker": "YOUR_MONIKER_NAME",
+  "identity": "YOUR_KEYBASE_ID",
+  "website": "YOUR_WEBSITE_URL",
+  "security": "YOUR_SECURITY_EMAIL",
+  "details": "YOUR_DETAILS",
+  "commission-rate": "0.05",
+  "commission-max-rate": "0.20",
+  "commission-max-change-rate": "0.05",
+  "min-self-delegation": "1"
+}
+EOF
+) \
+--chain-id gardia-4 \
+--from wallet \
+--gas-adjustment 1.4 \
+--gas auto \
+--gas-prices 2.5urock \
+-y
+```
+Lưu file $HOME/.zrchain/config/priv_validator_key.json để khôi phục khóa ký validator.
+---
+# Thiết Lập Sidecar (Tùy Chọn)
+Sidecar cho phép validator bỏ phiếu trên dữ liệu oracle trong quá trình đồng thuận CometBFT.
+## 1. Tải Repository zenrock-validators
+```bash
+cd $HOME
+rm -rf zenrock-validators
+git clone https://github.com/zenrocklabs/zenrock-validators
+```
+## 2. Tạo Khóa
+Thiết lập mật khẩu:
+```bash
+read -p "Enter password for the keys: " key_pass
+```
+Tạo thư mục sidecar:
+```bash
+mkdir -p $HOME/.zrchain/sidecar/bin
+mkdir -p $HOME/.zrchain/sidecar/keys
+```
+Xây dựng binary ECDSA:
+```bash
+cd $HOME/zenrock-validators/utils/keygen/ecdsa && go build
+```
+Xây dựng binary BLS:
+```bash
+cd $HOME/zenrock-validators/utils/keygen/bls && go build
+```
+Tạo khóa ECDSA:
+```bash
+ecdsa_output_file=$HOME/.zrchain/sidecar/keys/ecdsa.key.json
+ecdsa_creation=$($HOME/zenrock-validators/utils/keygen/ecdsa/ecdsa --password $key_pass -output-file $ecdsa_output_file)
+ecdsa_address=$(echo "$ecdsa_creation" | grep "Public address" | cut -d: -f2)
+```
+Tạo khóa BLS:
+```bash
+bls_output_file=$HOME/.zrchain/sidecar/keys/bls.key.json
+$HOME/zenrock-validators/utils/keygen/bls/bls --password $key_pass -output-file $bls_output_file
+```
+In địa chỉ ECDSA:
+```bash
+echo "ecdsa address: $ecdsa_address"
+```
+## Khắc Phục Sự Cố (Nếu Cần)
+Nếu node không chạy, kiểm tra:
+Logs Dịch Vụ:
+```bash
+journalctl -u zenrock-testnet.service -n 50
+```
+Cấu Trúc Thư Mục Cosmovisor:
+```bash
+ls -l $HOME/.zrchain/cosmovisor/genesis/bin/zenrockd
+ls -l $HOME/.zrchain/cosmovisor/upgrades/v5rev5/bin/zenrockd
+ls -l $HOME/.zrchain/backups
+```
+Phiên Bản Binary:
+```bash
+zenrockd version
+$HOME/.zrchain/cosmovisor/upgrades/v5rev5/bin/zenrockd version
+```
+File upgrade-info.json:
+```bash
+cat $HOME/.zrchain/data/upgrade-info.json
+```
+Nếu yêu cầu nâng cấp khác, tải binary từ link trong file hoặc liên hệ cộng đồng Zenrock.
+Kiểm Tra Đồng Bộ:
+```bash
+zenrockd status --node tcp://localhost:18257 | jq
+```
+Nếu gặp lỗi, liên hệ cộng đồng Zenrock qua Discord/Telegram hoặc cung cấp logs để được hỗ trợ thêm.
+---
+# Lưu Ý Quan Trọng
+- Sao Lưu: Luôn sao lưu $HOME/.zrchain/config/priv_validator_key.json và mnemonic của ví.
+- Cập Nhật: Theo dõi thông báo từ Zenrock để biết các nâng cấp mới sau v5rev5.
+- Bảo Mật: Đảm bảo quyền truy cập thư mục $HOME/.zrchain chỉ giới hạn cho user quai.
+- Hướng dẫn này đã được kiểm chứng và tối ưu để cài đặt node Zenrock testnet (gardia-4) với Cosmovisor, xử lý nâng cấp v5rev5, và tránh các lỗi về thư mục hoặc binary. Nếu bạn cần hỗ trợ thêm về validator, sidecar, hoặc các vấn đề khác, hãy cho tôi 
+
+
